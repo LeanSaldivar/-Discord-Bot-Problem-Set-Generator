@@ -33,22 +33,21 @@ async def on_ready():
     print(f"We have logged in as {bot.user}")
 
 @bot.command()
-async def hello(ctx):
-    await ctx.send("Hello!")
-
-@bot.command()
-async def gen_prob(ctx, *, content: str):
+async def chat(ctx, *, content: str):
+    """Multi-turn conversation - maintains history per user."""
     try:
         await ctx.typing()
-        response = api.generate(content)
-        await send_as_chunks(ctx, response.candidates[0].content.parts[0].text)
-        print(f"Successfully responded to !gen_prob for: {content}")
+        session_id = str(ctx.channel.id)  # Each user has their own conversation
+        response = api.send_message(session_id, content)
+        await send_as_chunks(ctx, response.text)
+        print(f"Successfully responded to !chat for user {ctx.author.name}: {content}")
     except Exception as e:
-        print(f"An error occurred in gen_prob: {e}")
+        print(f"An error occurred in chat: {e}")
         await ctx.send("An error occurred while processing your request.")
 
 @bot.command()
-async def generate_prob_img(ctx, *, content: str):
+async def chat_with_file(ctx, *, content: str):
+    """Multi-turn conversation with file attachment - maintains history per user."""
     if not ctx.message.attachments:
         await ctx.send("Please attach an image or PDF file.")
         return
@@ -56,15 +55,15 @@ async def generate_prob_img(ctx, *, content: str):
     attachment = ctx.message.attachments[0]
     mime_type = attachment.content_type
 
-    # Accept only PNG or PDF
-    allowed_types = ["image/png", "application/pdf"]
+    allowed_types = ["image/png", "application/pdf", "image/jpeg", "image/jpg"]
     if mime_type not in allowed_types:
-        await ctx.send(f"Unsupported file type: `{mime_type}`. Only PNG and PDF are allowed.")
+        await ctx.send(f"Unsupported file type: `{mime_type}`. Only PNG, JPG, and PDF are allowed.")
         return
 
     try:
         await ctx.typing()
-        # Download file bytes
+        session_id = str(ctx.author.id)
+
         async with aiohttp.ClientSession() as session:
             async with session.get(attachment.url) as resp:
                 if resp.status != 200:
@@ -72,14 +71,21 @@ async def generate_prob_img(ctx, *, content: str):
                     return
                 file_bytes = await resp.read()
 
-        # Send to Gemini
-        response = api.generate_with_file(content, file_bytes, mime_type)
-
-        # Send back Gemini response
-        await send_as_chunks(ctx, response.candidates[0].content.parts[0].text)
-        print(f"Successfully responded to !generate_prob_img for: {content}")
+        response = api.send_message_with_file(session_id, content, file_bytes, mime_type)
+        await send_as_chunks(ctx, response.text)
+        print(f"Successfully responded to !chat_with_file for user {ctx.author.name}: {content}")
     except Exception as e:
-        print(f"An error occurred in generate_prob_img: {e}")
+        print(f"An error occurred in chat_with_file: {e}")
         await ctx.send("An error occurred while processing your request.")
+
+@bot.command()
+async def clear_chat(ctx):
+    """Clear your conversation history."""
+    session_id = str(ctx.author.id)
+    cleared = api.clear_session(session_id)
+    if cleared:
+        await ctx.send("✅ Your conversation history has been cleared!")
+    else:
+        await ctx.send("You don't have an active conversation.")
 
 bot.run(token, log_handler=handler, log_level=logging.DEBUG)
