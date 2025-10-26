@@ -1,6 +1,6 @@
+matplotlib
 aiohttp
 protobuf
 discord.py
 python-dotenv
 google-genai
-Pillow
